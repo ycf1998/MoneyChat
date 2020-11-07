@@ -273,6 +273,7 @@
       flex-direction: column;
       resize: both;
       overflow: hidden;
+      z-index: 1024;
   }
 
   #MoneyChat #ext.active {

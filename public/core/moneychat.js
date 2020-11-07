@@ -19,7 +19,7 @@ class MoneyChat {
             autoConnect: this.config.autoConnect
         });
         this.socket.on('connect', (msg) => {
-            console.log("连接成功")
+            console.log("connect success")
         });
         this.init()
     }
@@ -37,10 +37,20 @@ class MoneyChat {
             }
             // 开启缓存
             window.onbeforeunload = function (e) {
+                document.getElementById('chatBoxList').childNodes.forEach(node => {
+                    if (node.hasAttribute('mc-room')) {
+                        node.remove();
+                    }
+                })
                 let chatHistory = document.getElementById('chatBoxList').innerHTML;
                 // 好友和聊天室在添加的时候就已经添加缓存了
                 that.config.saveChatHistory ? that.setCache('chatHistory', chatHistory) : '';
                 sessionStorage.setItem('username', that.username);
+                // 退出所有聊天室
+                let rooms = window.myJoinRooms || [];
+                for (let room of rooms) {
+                    that.leaveRoom(room);
+                }
             }
         }
     }
@@ -117,11 +127,13 @@ class MoneyChat {
      */
     setCache(key, value) {
         if (!this.config.cache || key == '') return '';
-        let cache = JSON.parse(sessionStorage.getItem(this.username)) || {};
-        cache[key] = value;
         if (this.config.cacheLevel == 1) {
+            let cache = JSON.parse(sessionStorage.getItem(this.username)) || {};
+            cache[key] = value;
             sessionStorage.setItem(this.username, JSON.stringify(cache));
         } else if (this.config.cacheLevel == 2) {
+            let cache = JSON.parse(localStorage.getItem(this.username)) || {};
+            cache[key] = value;
             localStorage.setItem(this.username, JSON.stringify(cache));
         }
     }
@@ -288,21 +300,24 @@ class MoneyChat {
      * 创建 / 加入聊天室
      * @param {*} room 
      */
-    joinRoom(room) {
-        if (this.config.cache) {
-            let rooms = this.getCache('rooms') || [];
-            rooms.push(room);
-            this.setCache('rooms', rooms)
-        }
-        this.socket.emit('join', room);
+    joinRoom(room, type) {
+        // if (this.config.cache) {
+        //     let rooms = this.getCache('rooms') || [];
+        //     rooms.push(room);
+        //     this.setCache('rooms', rooms)
+        // }
+        this.socket.emit('join', room, type);
     }
     /**
      * 离开聊天室
      * @param {*} room 
      */
     leaveRoom(room) {
-        let rooms = this.getCache('rooms') || [];
-        rooms = rooms.filter(e => e == room);
+        // if (this.config.cache) {
+        //     let rooms = this.getCache('rooms') || [];
+        //     rooms = rooms.filter(e => e == room);
+        //     this.setCache('rooms', rooms)
+        // }
         this.socket.emit('leave', room);
     }
 

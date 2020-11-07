@@ -64,7 +64,10 @@ function moneyChatInit() {
     })
     // 接收系统信息
     moneychat.addEventListener('sys', (msg) => {
-
+        // 上线接收公共聊天室
+        if (msg.msgType == '2' && msg.msg.length > 0) {
+            addRoom(msg.msg, 'noJoin');
+        }
     })
     // 接收私聊信息
     moneychat.addEventListener('private', (msg) => {
@@ -117,6 +120,7 @@ function moneyChatInit() {
               </div>`;
         }
         target.insertAdjacentHTML('beforeend', recvMsg);
+        scrollToBottom();
         // 消息提醒
         $notice(room);
     })
@@ -208,25 +212,53 @@ function removeUser(user) {
     });
 }
 // 加入聊天室到列表
-function addRoom(dom, rooms = []) {
-    //let roomsCache = moneychat.getCache('room') || [];
+function addRoom(rooms = [], roomType = 'public') {
+    // 暂存加入的聊天室，用于退出时离开聊天室
+    if (roomType != 'noJoin') {
+        window.myJoinRooms = [window.myJoinRooms ? window.myJoinRooms : '', ...rooms]
+    }
+    let roomTypeHtml = '<span style="color:green">已加入</span>';
+    let opt = '<span class="delRoom" onclick=" $delRoom(this)">❌</span>';
+    switch (roomType) {
+        case 'private':
+            roomTypeHtml = '<span style="color:blue">私密</span>';
+            break;
+        case 'noJoin':
+            roomTypeHtml = '<span style="color:grey">未加入</span>';
+            opt = '';
+            break;
+        default:
+    }
     for (let room of rooms) {
-        // let index = friendsCache.findIndex(friend => friend.username = user);
-        let opt = '<span class="delRoom" onclick=" $delRoom(this)">❌</span>';
+        let exist = false;
+        roomsList.childNodes.forEach(e => {
+            if (e.getAttribute('mc-user') == room) {
+                exist = true;
+            }
+        })
+        if (exist) continue;
         let html = `<div
-                class="user-card" ondblclick='openSession(this)' mc-user='${room}' mc-user-name='${room}' mc-room>
+                class="user-card" ondblclick='openSession(this)' mc-user='${room}' mc-user-name='${room}' mc-room='${roomType}'>
                 <img class="user-avatar" src="https://i.loli.net/2020/10/24/p4eVy3sKDkYGEbn.jpg">
                 <div class="info">
                     <div class="title">
                         <name title="${room}">${room}</name>
                         <div></div>
                     </div>
-                    <small class="text-muted"></small>
+                    <small class="text-muted">${roomTypeHtml}</small>
                 </div>
                 <div class="opt">${opt}</div>
                 </div>`;
-        dom.insertAdjacentHTML('beforeend', html);
+        roomsList.insertAdjacentHTML('beforeend', html);
     }
+}
+
+function delRoom(room) {
+    roomsList.childNodes.forEach(e => {
+        if (e.getAttribute('mc-user') == room) {
+            e.remove();
+        }
+    })
 }
 
 // 搜索好友
@@ -271,33 +303,40 @@ document.getElementById('roomSearch').addEventListener('keydown', function (even
     if (event.keyCode === 13) {
         $joinRoom();
         event.preventDefault();
+        closeExt();
     }
-    closeExt();
 });
 
 function $joinRoom() {
     let roomInput = document.querySelector('#MoneyChat #roomSearch');
+    let roomTypeRadio = document.querySelector('#ext [name="roomType"]:checked');
     let room = roomInput.value;
+    let roomType = roomTypeRadio.value;
     roomInput.value = '';
+    document.querySelector('#ext [name="roomType"][value="public"]').checked = true;
     if (room == '') return;
     let exist = false;
     roomsList.childNodes.forEach(e => {
         if (e.getAttribute('mc-user') == room) {
+            if (e.getAttribute('mc-room') == 'noJoin') {
+                moneychat.joinRoom(room, roomType);
+                delRoom(e.getAttribute('mc-user'));
+                addRoom(new Array(e.getAttribute('mc-user')));
+            }
             exist = true;
         }
     })
     if (!exist) {
-        moneychat.joinRoom(room);
-        addRoom(roomsList, new Array(room));
+        moneychat.joinRoom(room, roomType);
+        addRoom(new Array(room), roomType);
     }
     $openSession(room, room, true);
 }
 // 离开聊天室
 function $delRoom(thisObj) {
     let room = thisObj.parentElement.parentElement.getAttribute('mc-user');
-    let roomNode = thisObj.parentElement.parentElement;
-    roomNode.remove();
-    moneychat.delFriend(room)
+    delRoom(room);
+    moneychat.leaveRoom(room);
 }
 
 // 发送信息
@@ -416,11 +455,18 @@ function closeChatWindow() {
 }
 // 打开聊天会话
 function openSession(thisObj) {
-    $openSession(thisObj.getAttribute('mc-user'), thisObj.getAttribute('mc-user-name'), thisObj.hasAttribute('mc-room'));
+    let isRoom = thisObj.hasAttribute('mc-room');
+    // 如果是聊天室，但还未加入，就加入
+    if (isRoom && thisObj.getAttribute('mc-room') == 'noJoin') {
+        delRoom(thisObj.getAttribute('mc-user'));
+        addRoom(new Array(thisObj.getAttribute('mc-user')));
+        moneychat.joinRoom(thisObj.getAttribute('mc-user'), 'public');
+    };
+    $openSession(thisObj.getAttribute('mc-user'), thisObj.getAttribute('mc-user-name'), isRoom);
 }
 
 function $openSession(to, toName, isRoom) {
-    event.stopPropagation();
+    window.event.stopPropagation();
     // 消息提醒
     $clearNotice(to);
     let chatBox = document.querySelector(`#chatBoxList .chat-box[mc-user='${to}']`);
@@ -452,7 +498,7 @@ function $openSession(to, toName, isRoom) {
 }
 // 删除聊天会话
 function delSession(thisObj) {
-    event.stopPropagation();
+    window.event.stopPropagation();
     let chatSession = thisObj.parentNode.parentNode;
     // 关闭对应聊天窗
     let username = chatSession.getAttribute('mc-user');
